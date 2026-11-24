@@ -1,6 +1,6 @@
 # 桐驿充电·换站批次验收
 
-逐站登记枪口，隔离编号冲突以及检测未过的站点，同批其他站点仍可交接。
+逐站登记枪口，跨批次保留在役站点和枪口；接替站通过后旧站才退役，同批其余站点照常交接。
 
 ## 业务流程
 
@@ -15,7 +15,9 @@ PostgreSQL 对站点和枪口写入建立真实 SAVEPOINT，站内原子回退�
 
 08:30 收到 TY-1124-站批，08:35 核对四个站号，08:40 录入枪口序列和检测值，08:45 设定演练下限 1000 kΩ，08:50 后台逐站入表，08:52 核对两个通过站与两次搁置，09:05 导出交班单。
 
-使用 PostgreSQL 主键检测重复，保存点覆盖站表与所有枪口写入，有质量失败也回滚。同批剩余通过站可以使用已回滚站曾尝试写入的枪口编号。默认通过 TY-S11、TY-S14，登记 3 个枪口。绝缘下限为模拟调试参数，整批使用数据库暂存表与最终结果快照，供验收培训。
+使用 PostgreSQL 主键与枪号名册检测重复，保存点覆盖站表与所有枪口写入，有质量失败也回滚。同批剩余通过站可以使用已回滚站曾尝试写入的枪口编号。默认通过 TY-S11、TY-S14，登记 3 个枪口。绝缘下限为模拟调试参数，整批使用数据库暂存表与最终结果快照，供验收培训。
+
+在役站点与枪口跨批次保留。资料用 `replaces` 标明接替站与旧站的接替关系：接替站先送检也可以通过，并沿用旧站对应枪号；接替站及全部枪口通过后旧站才退役，接替站有枪口没通过则旧站继续在役，同批无关站照常交接。两个批次并发争同一枪号时只准一方入册，另一方整站搁置。同批号重试沿用原裁决，不重复入册。「送电核对单」显示实际生效的交接与搁置原因。
 
 ## 启动
 
@@ -39,7 +41,7 @@ docker compose up -d --build --wait
 | reviewer | 业务复核员 | 查看执行证据、签署单次复核、下载交接单 |
 | viewer | 只读观察员 | 查看资料、执行结果及审计，下载证据 |
 
-选用「TY-1124-站批」对应的演示资料，保存一份复演资料，再以默认参数 1000 提交。worker 保存结果摘要、业务明细和 SHA-256。复核员登录后在「送电核对单」签署。
+选用「TY-1124-站批」对应的演示资料，保存一份复演资料，再以默认参数 1000 提交。worker 保存结果摘要、业务明细和 SHA-256。复核员登录后在「送电核对单」签署；页面同时列出本批实际生效的交接、搁置原因与当前在役名册。
 
 ## 开发说明
 
@@ -51,6 +53,8 @@ docker compose up -d --build --wait
 | 后台执行 | Redis 通知、数据库持久任务队列和行锁、Python worker |
 
 从 `backend/src/domain/scenario.py` 修改业务入口和演示口径，运行 `docker compose up -d --build --wait` 查看变更。数据库表结构在 `backend/src/models` 和 `backend/migrations`，输入模型在 `backend/src/schemas`。业务页和请求接口在 `frontend/src/pages`、`frontend/src/api`。资料、执行、复核三个工作流实体各有独立表和 API；场景输入及结果保留在所属资料和批次中。
+
+在役名册、枪号名册和批号裁决台账在 `backend/src/models/registers.py`（`service_station`、`service_port`、`port_registry`、`acceptance_batch`）。逐站验收与接替退役在 `backend/src/domain/transaction.py`，资料校验与 `replaces` 接替关系在 `backend/src/domain/intake.py`。跨批次序号唯一由枪号名册的行锁保证，同批号重试由批号台账保证。
 
 角色枚举在 `backend/src/constants/roles.py`、`frontend/src/constants/roles.js`，用于服务端访问控制、账号初始化、前端导航与签署。批次状态在 `backend/src/constants/job_state.py`、`frontend/src/constants/states.js`，用于队列、状态 API、状态标记与轮询。登记、提交、完成和签署事件写入审计表。
 

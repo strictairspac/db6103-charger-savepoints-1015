@@ -25,7 +25,7 @@ function registration(config, selected) {
     field("名称", el("input", {name: "title", required: true, minlength: 2, maxlength: 120, value: selected ? `${selected.title} · 复演` : ""})),
     field("说明", el("input", {name: "description", maxlength: 420, value: selected?.description || ""})),
     field(`${config.unit}内容`, el("textarea", {name: "payload", spellcheck: "false", required: true, rows: 12}, data),
-      selected ? "可以保留演示数据，也可以编辑 JSON 后保存。" : "输入业务 JSON。"),
+      "资料须含 stations，可选 batch 批号；接替站用 replaces 标注旧站号。同批号重试沿用原裁决。"),
     errorText(), el("button", {type: "submit"}, "保存资料"));
   submit(form, async values => {
     let payload;

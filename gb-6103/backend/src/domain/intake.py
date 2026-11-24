@@ -3,6 +3,9 @@ import re
 
 CODE = re.compile(r"[A-Z0-9][A-Z0-9-]{0,23}")
 
+STATION_KEYS = {"station", "district", "ports"}
+STATION_KEYS_WITH_REPLACEMENT = STATION_KEYS | {"replaces"}
+
 
 def _code(value, name):
     if not isinstance(value, str) or not CODE.fullmatch(value):
@@ -11,13 +14,29 @@ def _code(value, name):
 
 
 def validate(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("业务资料须为 JSON 对象")
+    if set(payload) not in ({"batch", "stations"}, {"stations"}):
+        raise ValueError("业务资料须含 stations，可选 batch 批号")
+    if "batch" in payload:
+        _code(payload["batch"], "批号")
     stations = payload.get("stations")
     if not isinstance(stations, list) or not 1 <= len(stations) <= 100:
         raise ValueError("stations 须含 1–100 条站点记录")
+    successors = {station["station"] for station in stations
+                  if isinstance(station, dict) and isinstance(station.get("replaces"), str)}
+    replaces = {station["replaces"] for station in stations
+                if isinstance(station, dict) and isinstance(station.get("replaces"), str)}
+    if successors & replaces:
+        raise ValueError("同批不能串接接替关系：接替站不能再被另一站接替")
     for station in stations:
-        if not isinstance(station, dict) or set(station) != {"station", "district", "ports"}:
-            raise ValueError("站点记录须含 station、district 和 ports")
+        if not isinstance(station, dict) or set(station) not in (STATION_KEYS, STATION_KEYS_WITH_REPLACEMENT):
+            raise ValueError("站点记录须含 station、district、ports，可选 replaces")
         _code(station["station"], "站号")
+        if "replaces" in station:
+            _code(station["replaces"], "接替旧站号")
+            if station["replaces"] == station["station"]:
+                raise ValueError("接替站号不能与旧站号相同")
         district = station["district"]
         if not isinstance(district, str) or not 1 <= len(district.strip()) <= 40 or len(district) > 40:
             raise ValueError("片区名称须为 1–40 字符")
